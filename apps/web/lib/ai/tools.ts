@@ -1,21 +1,18 @@
 import { tool } from "ai"
 import { z } from "zod"
 
-if (!process.env.DATA_API_URL) throw new Error("DATA_API_URL env var is not set")
-if (!process.env.INTERNAL_API_SECRET) throw new Error("INTERNAL_API_SECRET env var is not set")
-
-const DATA_API_URL = process.env.DATA_API_URL
-const INTERNAL_SECRET = process.env.INTERNAL_API_SECRET
-
-const apiHeaders = {
-  "Content-Type": "application/json",
-  "x-internal-secret": INTERNAL_SECRET,
-}
-
 async function callDataApi(path: string, body?: object) {
+  const DATA_API_URL = process.env.DATA_API_URL
+  const INTERNAL_SECRET = process.env.INTERNAL_API_SECRET
+  if (!DATA_API_URL) throw new Error("DATA_API_URL env var is not set")
+  if (!INTERNAL_SECRET) throw new Error("INTERNAL_API_SECRET env var is not set")
+
   const res = await fetch(`${DATA_API_URL}${path}`, {
     method: body ? "POST" : "GET",
-    headers: apiHeaders,
+    headers: {
+      "Content-Type": "application/json",
+      "x-internal-secret": INTERNAL_SECRET,
+    },
     body: body ? JSON.stringify(body) : undefined,
   })
   if (!res.ok) {
