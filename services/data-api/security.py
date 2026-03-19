@@ -39,11 +39,22 @@ def validate_sql(sql: str) -> bool:
         # Block DDL
         if isinstance(stmt, (exp.Create, exp.Drop, exp.AlterTable, exp.TruncateTable)):
             raise SQLSecurityError("DDL not allowed")
+        # Block CALL, SET, transaction control
+        if isinstance(stmt, (exp.Command, exp.Set, exp.Transaction, exp.Commit, exp.Rollback)):
+            raise SQLSecurityError("Statement not allowed")
 
         # Block dangerous function calls (read_parquet, read_csv, etc.)
-        for func in stmt.find_all(exp.Anonymous):
-            if func.name and func.name.lower().startswith("read_"):
-                raise SQLSecurityError(f"Function not allowed: {func.name}")
+        # Check both Anonymous (unknown functions) and named expression types
+        for node in stmt.walk():
+            func_name = None
+            if isinstance(node, exp.Anonymous):
+                func_name = node.name
+            elif hasattr(node, "sql_name"):
+                func_name = node.sql_name()
+            elif isinstance(node, exp.Func):
+                func_name = node.__class__.__name__.lower()
+            if func_name and func_name.lower().startswith("read_"):
+                raise SQLSecurityError(f"Function not allowed: {func_name}")
 
         # Collect CTE names (they are allowed as table references)
         cte_names: Set[str] = set()

@@ -84,13 +84,8 @@ class QueryEngine:
     def query(self, sql: str) -> QueryResult:
         validate_sql(sql)  # raises SQLSecurityError if invalid
 
-        # Attempt lazy initialization; if no data files yet, the query itself
-        # will raise an appropriate error from DuckDB.
         if not self._initialized:
-            try:
-                self.initialize()
-            except Exception:
-                pass
+            self._ensure_initialized()
 
         start = time.time()
         result_holder: Dict = {}
@@ -105,7 +100,7 @@ class QueryEngine:
             except Exception as e:
                 error_holder["error"] = str(e)
 
-        t = threading.Thread(target=run)
+        t = threading.Thread(target=run, daemon=True)
         t.start()
         t.join(timeout=QUERY_TIMEOUT_SECONDS)
 

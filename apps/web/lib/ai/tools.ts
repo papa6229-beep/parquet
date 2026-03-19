@@ -1,8 +1,11 @@
 import { tool } from "ai"
 import { z } from "zod"
 
-const DATA_API_URL = process.env.DATA_API_URL!
-const INTERNAL_SECRET = process.env.INTERNAL_API_SECRET!
+if (!process.env.DATA_API_URL) throw new Error("DATA_API_URL env var is not set")
+if (!process.env.INTERNAL_API_SECRET) throw new Error("INTERNAL_API_SECRET env var is not set")
+
+const DATA_API_URL = process.env.DATA_API_URL
+const INTERNAL_SECRET = process.env.INTERNAL_API_SECRET
 
 const apiHeaders = {
   "Content-Type": "application/json",

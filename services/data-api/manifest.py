@@ -15,6 +15,6 @@ def load_blob_urls() -> List[str]:
     url = os.environ.get("MANIFEST_BLOB_URL", MANIFEST_BLOB_URL)
     if not url:
         return []
-    with urllib.request.urlopen(url) as resp:
+    with urllib.request.urlopen(url, timeout=10) as resp:
         data = json.loads(resp.read())
     return [item["url"] for item in data.get("files", [])]
