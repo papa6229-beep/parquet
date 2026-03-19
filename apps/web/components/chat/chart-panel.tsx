@@ -32,8 +32,6 @@ export function ChartPanel({ latestChart }: ChartPanelProps) {
   useEffect(() => {
     if (!latestChart) return
     setCharts((prev) => {
-      const last = prev[prev.length - 1]
-      if (last && !last.pinned && last.spec.title === latestChart.title) return prev
       return [
         ...prev.filter((c) => c.pinned),
         { id: Date.now().toString(), spec: latestChart, pinned: false },
