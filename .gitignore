@@ -1,9 +1,17 @@
 .env.local
 .env
 **/.env.local
+**/.env
+**/.env.*.local
 **/node_modules/
 **/__pycache__/
 **/.pytest_cache/
 *.pyc
 .vercel/
 blob-manifest.json
+.next/
+out/
+.DS_Store
+Thumbs.db
+*.log
+npm-debug.log*

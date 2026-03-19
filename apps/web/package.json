@@ -6,7 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "next lint"
   },
   "dependencies": {
     "@ai-sdk/react": "^3.0.118",
@@ -35,7 +35,6 @@
     "react-dom": "19.2.4",
     "react-jsx-parser": "^2.4.1",
     "recharts": "^3.8.0",
-    "shadcn": "^4.0.8",
     "shiki": "^4.0.2",
     "streamdown": "^2.5.0",
     "tailwind-merge": "^3.5.0",
@@ -50,6 +49,7 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.2.0",
+    "shadcn": "^4.0.8",
     "tailwindcss": "^4",
     "typescript": "^5"
   }
