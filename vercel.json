@@ -1,0 +1,13 @@
+{
+  "experimentalServices": {
+    "web": {
+      "entrypoint": "apps/web",
+      "routePrefix": "/"
+    },
+    "data-api": {
+      "entrypoint": "services/data-api/main.py",
+      "routePrefix": "/api/data",
+      "maxDuration": 60
+    }
+  }
+}
