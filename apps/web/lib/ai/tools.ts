@@ -48,7 +48,7 @@ export const salesTools = {
     description: "쿼리 결과를 차트로 시각화합니다. query_data 실행 후 차트가 필요할 때 호출하세요.",
     inputSchema: z.object({
       type: z.enum(["line", "bar", "pie", "area"]).describe("차트 타입"),
-      data: z.array(z.record(z.unknown())).describe("차트 데이터 배열"),
+      data: z.array(z.record(z.string(), z.unknown())).describe("차트 데이터 배열"),
       title: z.string().describe("차트 제목"),
       xKey: z.string().describe("X축 데이터 키"),
       yKey: z.string().describe("Y축 데이터 키"),

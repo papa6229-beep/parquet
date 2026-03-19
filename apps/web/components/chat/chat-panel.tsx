@@ -82,7 +82,9 @@ export function ChatPanel({ onChartGenerated }: ChatPanelProps) {
               </div>
             ) : (
               <div className="max-w-[90%]">
-                <MessageResponse message={msg} />
+                <MessageResponse>
+                  {msg.parts?.filter((p) => p.type === "text").map((p) => p.type === "text" ? p.text : "").join("")}
+                </MessageResponse>
                 {/* 인라인 차트: render_chart 결과 */}
                 {msg.parts?.map((p, i) => {
                   if (p.type === "tool-result") {
