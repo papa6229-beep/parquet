@@ -1,6 +1,5 @@
 import { handleUpload, type HandleUploadBody } from "@vercel/blob/client"
 import { NextRequest, NextResponse } from "next/server"
-import { publishManifest } from "@/lib/blob/manifest"
 import { cookies } from "next/headers"
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
@@ -31,13 +30,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         }
       },
       onUploadCompleted: async () => {
-        // Called by Vercel servers after upload — publish manifest so Python service can reload
-        // Wrapped in try/catch so webhook always returns 200 (client won't retry on failure)
-        try {
-          await publishManifest()
-        } catch (e) {
-          console.error("[upload] publishManifest failed:", e)
-        }
+        // Intentionally empty — manifest publishing happens in /api/reload
+        // to avoid webhook timeout causing client to loop
       },
     })
     return NextResponse.json(jsonResponse)

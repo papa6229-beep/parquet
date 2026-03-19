@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { cookies } from "next/headers"
+import { publishManifest } from "@/lib/blob/manifest"
 
 export async function POST(req: NextRequest) {
   const cookieStore = await cookies()
@@ -7,6 +8,9 @@ export async function POST(req: NextRequest) {
   if (adminToken !== process.env.ADMIN_SECRET) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
+
+  // Publish manifest.json to Blob so Python service can read updated parquet URLs
+  await publishManifest()
 
   const res = await fetch(`${process.env.DATA_API_URL}/reload`, {
     method: "POST",
