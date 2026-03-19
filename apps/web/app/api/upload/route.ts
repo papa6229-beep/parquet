@@ -6,14 +6,20 @@ import { cookies } from "next/headers"
 export async function POST(req: NextRequest): Promise<NextResponse> {
   const body = (await req.json()) as HandleUploadBody
 
+  // cookies() only works for browser requests (generate-token), not Vercel webhook calls (upload-completed)
+  let adminToken: string | undefined
+  try {
+    const cookieStore = await cookies()
+    adminToken = cookieStore.get("admin_token")?.value
+  } catch {
+    // webhook call from Vercel servers — no cookies available, that's expected
+  }
+
   try {
     const jsonResponse = await handleUpload({
       body,
       request: req,
       onBeforeGenerateToken: async (pathname) => {
-        // Auth check on token generation request (comes from browser with cookies)
-        const cookieStore = await cookies()
-        const adminToken = cookieStore.get("admin_token")?.value
         if (adminToken !== process.env.ADMIN_SECRET) {
           throw new Error("Unauthorized")
         }
@@ -21,14 +27,17 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           throw new Error("parquet 파일만 허용됩니다")
         }
         return {
-          allowedContentTypes: ["application/octet-stream", "application/x-parquet"],
           addRandomSuffix: false,
         }
       },
       onUploadCompleted: async () => {
-        // Called by Vercel servers after each file upload completes
-        // Publishes updated manifest.json so Python service can reload
-        await publishManifest()
+        // Called by Vercel servers after upload — publish manifest so Python service can reload
+        // Wrapped in try/catch so webhook always returns 200 (client won't retry on failure)
+        try {
+          await publishManifest()
+        } catch (e) {
+          console.error("[upload] publishManifest failed:", e)
+        }
       },
     })
     return NextResponse.json(jsonResponse)
