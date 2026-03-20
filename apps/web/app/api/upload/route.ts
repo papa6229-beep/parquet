@@ -27,6 +27,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         }
         return {
           addRandomSuffix: false,
+          allowOverwrite: true,
         }
       },
       // No onUploadCompleted — omitting it prevents Vercel from embedding
