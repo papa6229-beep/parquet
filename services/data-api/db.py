@@ -58,12 +58,14 @@ class QueryEngine:
         if not urls:
             self._initialized = False
             return [], []
-        # Test each URL and skip corrupted files
+        # Test each URL individually — read full schema + data to catch footer corruption
         valid_urls = []
         bad_urls = []
         for url in urls:
             try:
-                self.conn.execute(f"SELECT * FROM read_parquet('{url}') LIMIT 1").fetchone()
+                # Force full file read: DESCRIBE reads footer, SELECT reads data
+                self.conn.execute(f"DESCRIBE SELECT * FROM read_parquet('{url}')").fetchall()
+                self.conn.execute(f"SELECT * FROM read_parquet('{url}') LIMIT 5").fetchall()
                 valid_urls.append(url)
             except Exception as e:
                 print(f"[init] Skipping bad file: {url} — {e}")
@@ -71,14 +73,38 @@ class QueryEngine:
         if not valid_urls:
             self._initialized = False
             return valid_urls, bad_urls
-        url_list = "[" + ", ".join(f"'{u}'" for u in valid_urls) + "]"
+        # Create VIEW with retry — if multi-file read fails, fall back to one-by-one
         with self._lock:
-            self.conn.execute(f"""
-                CREATE OR REPLACE VIEW sales_view AS
-                SELECT * FROM read_parquet({url_list},
-                    hive_partitioning=false,
-                    union_by_name=true)
-            """)
+            try:
+                url_list = "[" + ", ".join(f"'{u}'" for u in valid_urls) + "]"
+                self.conn.execute(f"""
+                    CREATE OR REPLACE VIEW sales_view AS
+                    SELECT * FROM read_parquet({url_list},
+                        hive_partitioning=false,
+                        union_by_name=true)
+                """)
+            except Exception as e:
+                print(f"[init] Multi-file VIEW failed: {e}, retrying one-by-one...")
+                # Some file passed individual test but fails in combined read
+                retry_valid = []
+                for url in valid_urls:
+                    try:
+                        self.conn.execute(f"SELECT * FROM read_parquet('{url}')").fetchone()
+                        retry_valid.append(url)
+                    except Exception as e2:
+                        print(f"[init] Removing on retry: {url} — {e2}")
+                        bad_urls.append(url)
+                valid_urls = retry_valid
+                if not valid_urls:
+                    self._initialized = False
+                    return valid_urls, bad_urls
+                url_list = "[" + ", ".join(f"'{u}'" for u in valid_urls) + "]"
+                self.conn.execute(f"""
+                    CREATE OR REPLACE VIEW sales_view AS
+                    SELECT * FROM read_parquet({url_list},
+                        hive_partitioning=false,
+                        union_by_name=true)
+                """)
             self._initialized = True
         return valid_urls, bad_urls
 
