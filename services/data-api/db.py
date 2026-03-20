@@ -52,7 +52,7 @@ class QueryEngine:
         return cls._instance
 
     def initialize(self, urls=None):
-        """Load parquet URLs and create sales_view. Returns (valid_urls, bad_urls).
+        """Load parquet URLs and create sales_view TABLE (materialized).
         Never raises — always returns partial results."""
         if urls is None:
             urls = load_blob_urls()
@@ -60,49 +60,40 @@ class QueryEngine:
             self._initialized = False
             return [], []
 
-        # Build VIEW incrementally: add one file at a time
+        # Load each file individually into a materialized TABLE
         valid_urls = []
         bad_urls = []
         with self._lock:
+            self.conn.execute("DROP TABLE IF EXISTS sales_view")
             for url in urls:
-                test_list = valid_urls + [url]
-                url_expr = "[" + ", ".join(f"'{u}'" for u in test_list) + "]"
                 try:
-                    self.conn.execute(f"""
-                        CREATE OR REPLACE VIEW sales_view_test AS
-                        SELECT * FROM read_parquet({url_expr},
-                            hive_partitioning=false,
-                            union_by_name=true)
-                    """)
-                    # Force actual data read to catch footer corruption
-                    self.conn.execute("SELECT * FROM sales_view_test LIMIT 1").fetchone()
+                    if not valid_urls:
+                        # First valid file: CREATE TABLE
+                        self.conn.execute(f"""
+                            CREATE TABLE sales_view AS
+                            SELECT * FROM read_parquet('{url}',
+                                hive_partitioning=false)
+                        """)
+                    else:
+                        # Subsequent files: INSERT INTO
+                        self.conn.execute(f"""
+                            INSERT INTO sales_view
+                            SELECT * FROM read_parquet('{url}',
+                                hive_partitioning=false,
+                                union_by_name=true)
+                        """)
                     valid_urls.append(url)
+                    print(f"[init] Loaded: {url.split('/')[-1]}")
                 except Exception as e:
-                    print(f"[init] Skipping bad file: {url} — {e}")
+                    print(f"[init] Skipping bad file: {url.split('/')[-1]} — {e}")
                     bad_urls.append(url)
 
-            if not valid_urls:
-                self._initialized = False
-                return valid_urls, bad_urls
-
-            url_expr = "[" + ", ".join(f"'{u}'" for u in valid_urls) + "]"
-            try:
-                self.conn.execute(f"""
-                    CREATE OR REPLACE VIEW sales_view AS
-                    SELECT * FROM read_parquet({url_expr},
-                        hive_partitioning=false,
-                        union_by_name=true)
-                """)
+            if valid_urls:
                 self._initialized = True
-            except Exception as e:
-                print(f"[init] Final VIEW creation failed: {e}")
+                row_count = self.conn.execute("SELECT COUNT(*) FROM sales_view").fetchone()[0]
+                print(f"[init] Done: {len(valid_urls)} files, {row_count} rows loaded")
+            else:
                 self._initialized = False
-
-            # Clean up test view
-            try:
-                self.conn.execute("DROP VIEW IF EXISTS sales_view_test")
-            except Exception:
-                pass
 
         return valid_urls, bad_urls
 
