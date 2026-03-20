@@ -48,5 +48,5 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "fetch 실패", detail: String(e) }, { status: 500 })
   }
 
-  return NextResponse.json({ status: "reloaded" })
+  return NextResponse.json({ status: "reloaded", ...result, total_sent: urls.length })
 }
