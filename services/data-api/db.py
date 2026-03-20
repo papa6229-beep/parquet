@@ -22,7 +22,9 @@ class QueryEngine:
     _instance: Optional["QueryEngine"] = None
 
     def __init__(self):
-        self.conn = duckdb.connect(database=":memory:", read_only=False, config={"home_directory": "/tmp"})
+        os.environ.setdefault("HOME", "/tmp")
+        self.conn = duckdb.connect(database=":memory:", read_only=False)
+        self.conn.execute("SET home_directory='/tmp'")
         self.conn.execute("SET temp_directory='/tmp'")
         self.conn.execute("SET memory_limit='400MB'")
         try:
