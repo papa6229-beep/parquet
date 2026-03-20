@@ -21,7 +21,7 @@ export async function getManifest(): Promise<BlobFile[]> {
 
 export async function uploadParquet(file: File): Promise<BlobFile> {
   const blob = await put(`parquet/${file.name}`, file, {
-    access: "public",
+    access: "private",
     addRandomSuffix: false,
   })
   return {
@@ -37,7 +37,7 @@ export async function publishManifest(): Promise<string> {
   const files = await getManifest()
   const content = JSON.stringify({ files }, null, 2)
   const blob = await put("manifest.json", content, {
-    access: "public",
+    access: "private",
     addRandomSuffix: false,
     contentType: "application/json",
   })
