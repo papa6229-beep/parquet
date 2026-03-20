@@ -46,10 +46,13 @@ async def startup():
 @app.get("/health")
 async def health():
     engine = QueryEngine.get()
+    env_keys = [k for k in os.environ.keys() if "BLOB" in k or "MANIFEST" in k or "INTERNAL" in k]
     return {
         "status": "ok",
         "initialized": engine._initialized,
         "manifest_url_set": bool(os.environ.get("MANIFEST_BLOB_URL", "")),
+        "blob_token_set": bool(os.environ.get("BLOB_READ_WRITE_TOKEN", "")),
+        "env_keys": env_keys,
     }
 
 
