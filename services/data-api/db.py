@@ -34,7 +34,14 @@ class QueryEngine:
         # Set bearer token for private Vercel Blob URLs
         blob_token = os.environ.get("BLOB_READ_WRITE_TOKEN", "")
         if blob_token:
-            self.conn.execute(f"SET http_headers = MAP {{'Authorization': 'Bearer {blob_token}'}}")
+            self.conn.execute(f"""
+                CREATE SECRET blob_auth (
+                    TYPE HTTP,
+                    EXTRA_HTTP_HEADERS MAP {{
+                        'Authorization': 'Bearer {blob_token}'
+                    }}
+                )
+            """)
         self._initialized = False
         self._lock = threading.Lock()
 
