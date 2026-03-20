@@ -56,6 +56,19 @@ async def health():
     }
 
 
+@app.get("/debug-manifest")
+async def debug_manifest():
+    """Test manifest loading — for diagnostics only."""
+    from manifest import load_blob_urls
+    url = os.environ.get("MANIFEST_BLOB_URL", "")
+    token = os.environ.get("BLOB_READ_WRITE_TOKEN", "")
+    try:
+        urls = load_blob_urls()
+        return {"manifest_url": url[:80] if url else "", "token_len": len(token), "file_count": len(urls), "first_url": urls[0][:80] if urls else ""}
+    except Exception as e:
+        return {"manifest_url": url[:80] if url else "", "token_len": len(token), "error": str(e)}
+
+
 @app.get("/schema", dependencies=[Depends(verify_secret)])
 async def get_schema():
     try:
