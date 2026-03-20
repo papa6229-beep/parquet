@@ -51,9 +51,28 @@ class QueryEngine:
             cls._instance = cls()
         return cls._instance
 
+    def _download_file(self, url: str, dest: str) -> bool:
+        """Download a blob URL to a local file with Bearer auth."""
+        import urllib.request
+        blob_token = os.environ.get("BLOB_READ_WRITE_TOKEN", "")
+        req = urllib.request.Request(url, headers={
+            "Authorization": f"Bearer {blob_token}",
+        })
+        try:
+            with urllib.request.urlopen(req, timeout=60) as resp:
+                with open(dest, "wb") as f:
+                    while True:
+                        chunk = resp.read(1024 * 1024)  # 1MB chunks
+                        if not chunk:
+                            break
+                        f.write(chunk)
+            return True
+        except Exception as e:
+            print(f"[download] Failed: {url.split('/')[-1]} — {e}")
+            return False
+
     def initialize(self, urls=None):
-        """Load parquet URLs and create sales_view VIEW (lazy, low memory).
-        Two-phase: validate individually, then create VIEW with union_by_name.
+        """Download parquet files to /tmp, then create VIEW from local files.
         Never raises — always returns partial results."""
         if urls is None:
             urls = load_blob_urls()
@@ -61,34 +80,50 @@ class QueryEngine:
             self._initialized = False
             return [], []
 
-        # Phase 1: Validate each file individually
+        # Phase 1: Download each file to /tmp and validate
+        local_dir = "/tmp/parquet"
+        os.makedirs(local_dir, exist_ok=True)
         valid_urls = []
         bad_urls = []
+        local_files = []
         for url in urls:
-            try:
-                self.conn.execute(f"SELECT * FROM read_parquet('{url}') LIMIT 1").fetchone()
-                valid_urls.append(url)
-                print(f"[init] OK: {url.split('/')[-1]}")
-            except Exception as e:
-                print(f"[init] Bad: {url.split('/')[-1]} — {e}")
+            fname = url.split("/")[-1]
+            local_path = f"{local_dir}/{fname}"
+            # Download
+            if not self._download_file(url, local_path):
                 bad_urls.append(url)
+                continue
+            # Validate local file
+            try:
+                self.conn.execute(f"SELECT * FROM read_parquet('{local_path}') LIMIT 1").fetchone()
+                valid_urls.append(url)
+                local_files.append(local_path)
+                fsize = os.path.getsize(local_path) / (1024*1024)
+                print(f"[init] OK: {fname} ({fsize:.1f}MB)")
+            except Exception as e:
+                print(f"[init] Bad: {fname} — {e}")
+                bad_urls.append(url)
+                try:
+                    os.remove(local_path)
+                except Exception:
+                    pass
 
-        if not valid_urls:
+        if not local_files:
             self._initialized = False
             return valid_urls, bad_urls
 
-        # Phase 2: Create VIEW (lazy — reads on demand, no memory for storage)
+        # Phase 2: Create VIEW from local files (reliable, no HTTP re-reads)
         with self._lock:
-            url_list = "[" + ", ".join(f"'{u}'" for u in valid_urls) + "]"
+            file_list = "[" + ", ".join(f"'{f}'" for f in local_files) + "]"
             try:
                 self.conn.execute(f"""
                     CREATE OR REPLACE VIEW sales_view AS
-                    SELECT * FROM read_parquet({url_list},
+                    SELECT * FROM read_parquet({file_list},
                         hive_partitioning=false,
                         union_by_name=true)
                 """)
                 self._initialized = True
-                print(f"[init] VIEW created with {len(valid_urls)} files")
+                print(f"[init] VIEW created with {len(local_files)} local files")
             except Exception as e:
                 print(f"[init] VIEW failed: {e}")
                 self._initialized = False
