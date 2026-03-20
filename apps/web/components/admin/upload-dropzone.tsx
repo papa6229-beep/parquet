@@ -36,6 +36,7 @@ export function UploadDropzone() {
         await upload(`parquet/${file.name}`, file, {
           access: "public",
           handleUploadUrl: "/api/upload",
+          multipart: true,
           onUploadProgress: ({ percentage }) => {
             setProgress((prev) =>
               prev.map((p) => p.name === file.name ? { ...p, progress: percentage } : p)
