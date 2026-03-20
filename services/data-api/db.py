@@ -40,9 +40,10 @@ class QueryEngine:
             cls._instance = cls()
         return cls._instance
 
-    def initialize(self):
+    def initialize(self, urls=None):
         """Load parquet URLs and create sales_view."""
-        urls = load_blob_urls()
+        if urls is None:
+            urls = load_blob_urls()
         if not urls:
             # No files yet — don't create view, mark uninitialized
             self._initialized = False
@@ -57,10 +58,10 @@ class QueryEngine:
             """)
             self._initialized = True
 
-    def reload(self):
+    def reload(self, urls=None):
         """Re-initialize view after new files uploaded."""
         self._initialized = False
-        self.initialize()
+        self.initialize(urls=urls)
 
     def _ensure_initialized(self):
         if not self._initialized:

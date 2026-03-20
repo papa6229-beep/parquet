@@ -31,6 +31,10 @@ class QueryRequest(BaseModel):
     sql: str
 
 
+class ReloadRequest(BaseModel):
+    urls: Optional[list] = None
+
+
 @app.on_event("startup")
 async def startup():
     try:
@@ -70,10 +74,13 @@ async def run_query(req: QueryRequest):
 
 
 @app.post("/reload", dependencies=[Depends(verify_secret)])
-async def reload_view():
+async def reload_view(req: Optional[ReloadRequest] = None):
     """Re-initialize sales_view after new parquet files uploaded."""
     try:
-        QueryEngine.get().reload()
+        if req and req.urls:
+            QueryEngine.get().reload(urls=req.urls)
+        else:
+            QueryEngine.get().reload()
         return {"status": "reloaded"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

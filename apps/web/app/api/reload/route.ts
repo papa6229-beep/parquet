@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { cookies } from "next/headers"
-import { publishManifest } from "@/lib/blob/manifest"
+import { getManifest, publishManifest } from "@/lib/blob/manifest"
 
 export async function POST(req: NextRequest) {
   const cookieStore = await cookies()
@@ -9,17 +9,25 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
-  // Publish manifest.json to Blob so Python service can read updated parquet URLs
+  // Publish manifest.json to Blob
   try {
     await publishManifest()
   } catch (e) {
     return NextResponse.json({ error: "manifest 실패", detail: String(e) }, { status: 500 })
   }
 
+  // Get parquet URLs and pass them directly to data API (private blob URLs need auth)
   try {
+    const files = await getManifest()
+    const urls = files.map((f) => f.url)
+
     const res = await fetch(`${process.env.DATA_API_URL}/reload`, {
       method: "POST",
-      headers: { "x-internal-secret": process.env.INTERNAL_API_SECRET! },
+      headers: {
+        "x-internal-secret": process.env.INTERNAL_API_SECRET!,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ urls }),
     })
     if (!res.ok) {
       const body = await res.text()
