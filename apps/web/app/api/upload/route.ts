@@ -29,10 +29,10 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           addRandomSuffix: false,
         }
       },
-      onUploadCompleted: async () => {
-        // Intentionally empty — manifest publishing happens in /api/reload
-        // to avoid webhook timeout causing client to loop
-      },
+      // No onUploadCompleted — omitting it prevents Vercel from embedding
+      // a callbackUrl in the client token, so no server-to-server webhook
+      // is needed and the upload completes cleanly. Manifest publishing
+      // happens in /api/reload (called by the client after all uploads finish).
     })
     return NextResponse.json(jsonResponse)
   } catch (error) {
