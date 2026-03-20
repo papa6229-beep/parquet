@@ -1,4 +1,5 @@
 import { handleUpload, type HandleUploadBody } from "@vercel/blob/client"
+import { del, list } from "@vercel/blob"
 import { NextRequest, NextResponse } from "next/server"
 import { cookies } from "next/headers"
 
@@ -25,9 +26,18 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         if (!pathname.endsWith(".parquet")) {
           throw new Error("parquet 파일만 허용됩니다")
         }
+        // Delete existing blob with same pathname to avoid conflict
+        // (addRandomSuffix: false requires no existing file at this path)
+        try {
+          const { blobs } = await list({ prefix: pathname, limit: 1 })
+          if (blobs.length > 0 && blobs[0].pathname === pathname) {
+            await del(blobs[0].url)
+          }
+        } catch {
+          // Ignore — file may not exist yet
+        }
         return {
           addRandomSuffix: false,
-          allowOverwrite: true,
         }
       },
       // No onUploadCompleted — omitting it prevents Vercel from embedding
