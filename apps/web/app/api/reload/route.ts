@@ -18,9 +18,12 @@ export async function POST(req: NextRequest) {
   }
 
   // Get parquet URLs and pass them directly to data API (private blob URLs need auth)
+  let dataResult: Record<string, unknown> = {}
+  let totalSent = 0
   try {
     const files = await getManifest()
     const urls = files.map((f) => f.url)
+    totalSent = urls.length
 
     const res = await fetch(`${process.env.DATA_API_URL}/reload`, {
       method: "POST",
@@ -36,10 +39,10 @@ export async function POST(req: NextRequest) {
     }
 
     // Delete corrupted files from Blob
-    const result = await res.json()
-    if (result.bad_files?.length > 0) {
-      for (const badUrl of result.bad_files) {
-        try { await del(badUrl) } catch { /* ignore */ }
+    dataResult = await res.json()
+    if (Array.isArray(dataResult.bad_files) && dataResult.bad_files.length > 0) {
+      for (const badUrl of dataResult.bad_files) {
+        try { await del(badUrl as string) } catch { /* ignore */ }
       }
       // Re-publish manifest without bad files
       await publishManifest()
@@ -48,5 +51,5 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "fetch 실패", detail: String(e) }, { status: 500 })
   }
 
-  return NextResponse.json({ status: "reloaded", ...result, total_sent: urls.length })
+  return NextResponse.json({ status: "reloaded", ...dataResult, total_sent: totalSent })
 }
