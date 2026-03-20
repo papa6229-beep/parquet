@@ -63,7 +63,7 @@ class QueryEngine:
         bad_urls = []
         for url in urls:
             try:
-                self.conn.execute(f"SELECT COUNT(*) FROM read_parquet('{url}') LIMIT 1").fetchone()
+                self.conn.execute(f"SELECT * FROM read_parquet('{url}') LIMIT 1").fetchone()
                 valid_urls.append(url)
             except Exception as e:
                 print(f"[init] Skipping bad file: {url} — {e}")
