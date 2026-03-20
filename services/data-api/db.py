@@ -59,7 +59,18 @@ class QueryEngine:
             # No files yet — don't create view, mark uninitialized
             self._initialized = False
             return
-        url_list = "[" + ", ".join(f"'{u}'" for u in urls) + "]"
+        # Test each URL and skip corrupted files
+        valid_urls = []
+        for url in urls:
+            try:
+                self.conn.execute(f"SELECT 1 FROM read_parquet('{url}') LIMIT 1")
+                valid_urls.append(url)
+            except Exception as e:
+                print(f"[init] Skipping bad file: {url} — {e}")
+        if not valid_urls:
+            self._initialized = False
+            return
+        url_list = "[" + ", ".join(f"'{u}'" for u in valid_urls) + "]"
         with self._lock:
             self.conn.execute(f"""
                 CREATE OR REPLACE VIEW sales_view AS
