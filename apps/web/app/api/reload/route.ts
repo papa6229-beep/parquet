@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
+import { del } from "@vercel/blob"
 import { cookies } from "next/headers"
 import { getManifest, publishManifest } from "@/lib/blob/manifest"
 
@@ -32,6 +33,16 @@ export async function POST(req: NextRequest) {
     if (!res.ok) {
       const body = await res.text()
       return NextResponse.json({ error: "reload 실패", status: res.status, body }, { status: 500 })
+    }
+
+    // Delete corrupted files from Blob
+    const result = await res.json()
+    if (result.bad_files?.length > 0) {
+      for (const badUrl of result.bad_files) {
+        try { await del(badUrl) } catch { /* ignore */ }
+      }
+      // Re-publish manifest without bad files
+      await publishManifest()
     }
   } catch (e) {
     return NextResponse.json({ error: "fetch 실패", detail: String(e) }, { status: 500 })

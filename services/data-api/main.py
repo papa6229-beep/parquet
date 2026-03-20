@@ -78,9 +78,9 @@ async def reload_view(req: Optional[ReloadRequest] = None):
     """Re-initialize sales_view after new parquet files uploaded."""
     try:
         if req and req.urls:
-            QueryEngine.get().reload(urls=req.urls)
+            valid, bad = QueryEngine.get().reload(urls=req.urls)
         else:
-            QueryEngine.get().reload()
-        return {"status": "reloaded"}
+            valid, bad = QueryEngine.get().reload()
+        return {"status": "reloaded", "valid_files": len(valid), "bad_files": bad}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

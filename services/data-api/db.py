@@ -52,24 +52,25 @@ class QueryEngine:
         return cls._instance
 
     def initialize(self, urls=None):
-        """Load parquet URLs and create sales_view."""
+        """Load parquet URLs and create sales_view. Returns (valid_urls, bad_urls)."""
         if urls is None:
             urls = load_blob_urls()
         if not urls:
-            # No files yet — don't create view, mark uninitialized
             self._initialized = False
-            return
+            return [], []
         # Test each URL and skip corrupted files
         valid_urls = []
+        bad_urls = []
         for url in urls:
             try:
-                self.conn.execute(f"SELECT 1 FROM read_parquet('{url}') LIMIT 1")
+                self.conn.execute(f"SELECT COUNT(*) FROM read_parquet('{url}') LIMIT 1").fetchone()
                 valid_urls.append(url)
             except Exception as e:
                 print(f"[init] Skipping bad file: {url} — {e}")
+                bad_urls.append(url)
         if not valid_urls:
             self._initialized = False
-            return
+            return valid_urls, bad_urls
         url_list = "[" + ", ".join(f"'{u}'" for u in valid_urls) + "]"
         with self._lock:
             self.conn.execute(f"""
@@ -79,11 +80,12 @@ class QueryEngine:
                     union_by_name=true)
             """)
             self._initialized = True
+        return valid_urls, bad_urls
 
     def reload(self, urls=None):
-        """Re-initialize view after new files uploaded."""
+        """Re-initialize view after new files uploaded. Returns (valid_urls, bad_urls)."""
         self._initialized = False
-        self.initialize(urls=urls)
+        return self.initialize(urls=urls)
 
     def _ensure_initialized(self):
         if not self._initialized:
