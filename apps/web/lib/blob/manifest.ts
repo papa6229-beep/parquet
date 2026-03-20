@@ -39,6 +39,7 @@ export async function publishManifest(): Promise<string> {
   const blob = await put("manifest.json", content, {
     access: "private",
     addRandomSuffix: false,
+    allowOverwrite: true,
     contentType: "application/json",
   })
   return blob.url  // MANIFEST_BLOB_URL 환경변수로 Service 2에 전달
