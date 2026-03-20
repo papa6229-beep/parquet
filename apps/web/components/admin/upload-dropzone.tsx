@@ -13,6 +13,7 @@ interface UploadResult {
 interface FileProgress {
   name: string
   progress: number
+  status: string
 }
 
 export function UploadDropzone() {
@@ -20,35 +21,50 @@ export function UploadDropzone() {
   const [results, setResults] = useState<UploadResult[]>([])
   const [progress, setProgress] = useState<FileProgress[]>([])
   const [dragging, setDragging] = useState(false)
+  const [debugLog, setDebugLog] = useState<string[]>([])
   const inputRef = useRef<HTMLInputElement>(null)
+
+  const log = (msg: string) => {
+    const ts = new Date().toISOString().slice(11, 23)
+    setDebugLog((prev) => [...prev.slice(-19), `[${ts}] ${msg}`])
+  }
 
   const uploadFiles = async (files: FileList) => {
     setUploading(true)
     setResults([])
     setProgress([])
+    setDebugLog([])
 
     const fileList = Array.from(files)
     const newResults: UploadResult[] = []
 
     for (const file of fileList) {
-      setProgress((prev) => [...prev, { name: file.name, progress: 0 }])
+      log(`START ${file.name} (${(file.size / 1024 / 1024).toFixed(1)}MB)`)
+      setProgress((prev) => [...prev, { name: file.name, progress: 0, status: "토큰 요청 중..." }])
       try {
-        await upload(`parquet/${file.name}`, file, {
+        log("토큰 요청 중...")
+        const blob = await upload(`parquet/${file.name}`, file, {
           access: "public",
           handleUploadUrl: "/api/upload",
           multipart: true,
-          onUploadProgress: ({ percentage }) => {
+          onUploadProgress: ({ loaded, total, percentage }) => {
+            log(`progress: ${percentage}% (${(loaded/1024/1024).toFixed(1)}/${(total/1024/1024).toFixed(1)}MB)`)
             setProgress((prev) =>
-              prev.map((p) => p.name === file.name ? { ...p, progress: percentage } : p)
+              prev.map((p) => p.name === file.name
+                ? { ...p, progress: percentage, status: `업로드 중 ${percentage}%` }
+                : p)
             )
           },
         })
+        log(`SUCCESS url=${blob.url}`)
         newResults.push({ name: file.name, success: true })
       } catch (err) {
+        const msg = err instanceof Error ? `${err.name}: ${err.message}` : String(err)
+        log(`ERROR ${msg}`)
         newResults.push({
           name: file.name,
           success: false,
-          error: err instanceof Error ? err.message : "업로드 실패",
+          error: msg,
         })
       }
     }
@@ -58,7 +74,13 @@ export function UploadDropzone() {
 
     // 업로드 완료 후 데이터 서비스 재초기화
     if (newResults.some((r) => r.success)) {
-      await fetch("/api/reload", { method: "POST" })
+      log("reload 호출 중...")
+      try {
+        await fetch("/api/reload", { method: "POST" })
+        log("reload 완료")
+      } catch (e) {
+        log(`reload 실패: ${e}`)
+      }
     }
 
     setUploading(false)
@@ -93,8 +115,8 @@ export function UploadDropzone() {
           {progress.map((p) => (
             <div key={p.name} className="space-y-1">
               <div className="flex items-center justify-between text-xs text-zinc-400">
-                <span className="font-mono truncate max-w-[80%]">{p.name}</span>
-                <span>{p.progress}%</span>
+                <span className="font-mono truncate max-w-[60%]">{p.name}</span>
+                <span>{p.status}</span>
               </div>
               <div className="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
                 <div
@@ -111,16 +133,30 @@ export function UploadDropzone() {
         </div>
       )}
 
+      {/* 디버그 로그 */}
+      {debugLog.length > 0 && (
+        <div className="bg-zinc-900 border border-zinc-700 rounded-lg p-3 max-h-48 overflow-y-auto">
+          <p className="text-xs text-zinc-500 mb-1 font-semibold">Debug Log</p>
+          {debugLog.map((line, i) => (
+            <p key={i} className={`text-xs font-mono ${line.includes("ERROR") ? "text-red-400" : line.includes("SUCCESS") ? "text-emerald-400" : "text-zinc-400"}`}>
+              {line}
+            </p>
+          ))}
+        </div>
+      )}
+
       {/* 완료 결과 */}
       {results.length > 0 && (
         <div className="space-y-2">
           {results.map((r) => (
-            <div key={r.name} className="flex items-center gap-2 text-sm">
+            <div key={r.name} className="flex items-start gap-2 text-sm">
               {r.success
-                ? <CheckCircle className="h-4 w-4 text-emerald-400 shrink-0" />
-                : <XCircle className="h-4 w-4 text-red-400 shrink-0" />}
-              <span className="text-zinc-300 font-mono truncate">{r.name}</span>
-              {r.error && <span className="text-red-400 text-xs">{r.error}</span>}
+                ? <CheckCircle className="h-4 w-4 text-emerald-400 shrink-0 mt-0.5" />
+                : <XCircle className="h-4 w-4 text-red-400 shrink-0 mt-0.5" />}
+              <div>
+                <span className="text-zinc-300 font-mono">{r.name}</span>
+                {r.error && <p className="text-red-400 text-xs mt-0.5 break-all">{r.error}</p>}
+              </div>
             </div>
           ))}
           {results.every((r) => r.success) && (
