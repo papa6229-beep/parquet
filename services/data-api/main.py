@@ -45,7 +45,12 @@ async def startup():
 
 @app.get("/health")
 async def health():
-    return {"status": "ok"}
+    engine = QueryEngine.get()
+    return {
+        "status": "ok",
+        "initialized": engine._initialized,
+        "manifest_url_set": bool(os.environ.get("MANIFEST_BLOB_URL", "")),
+    }
 
 
 @app.get("/schema", dependencies=[Depends(verify_secret)])

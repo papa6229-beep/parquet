@@ -14,11 +14,19 @@ def load_blob_urls() -> List[str]:
     """
     url = os.environ.get("MANIFEST_BLOB_URL", MANIFEST_BLOB_URL)
     if not url:
+        print("[manifest] MANIFEST_BLOB_URL is not set")
         return []
     blob_token = os.environ.get("BLOB_READ_WRITE_TOKEN", "")
-    req = urllib.request.Request(url, headers={
-        "Authorization": f"Bearer {blob_token}",
-    })
-    with urllib.request.urlopen(req, timeout=10) as resp:
-        data = json.loads(resp.read())
-    return [item["url"] for item in data.get("files", [])]
+    print(f"[manifest] Loading from: {url[:60]}...")
+    try:
+        req = urllib.request.Request(url, headers={
+            "Authorization": f"Bearer {blob_token}",
+        })
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            data = json.loads(resp.read())
+        urls = [item["url"] for item in data.get("files", [])]
+        print(f"[manifest] Found {len(urls)} files")
+        return urls
+    except Exception as e:
+        print(f"[manifest] Failed to load: {e}")
+        return []
