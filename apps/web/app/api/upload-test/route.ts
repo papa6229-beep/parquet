@@ -13,7 +13,7 @@ export async function POST(req: NextRequest) {
   try {
     // Test a tiny upload directly from the server (no CORS involved)
     const testBlob = await put("parquet/_test.txt", "hello", {
-      access: "public",
+      access: "private",
       addRandomSuffix: false,
       allowOverwrite: true,
     })
