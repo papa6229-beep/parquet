@@ -46,7 +46,6 @@ export function UploadDropzone() {
         const blob = await upload(`parquet/${file.name}`, file, {
           access: "public",
           handleUploadUrl: "/api/upload",
-          multipart: true,
           onUploadProgress: ({ loaded, total, percentage }) => {
             log(`progress: ${percentage}% (${(loaded/1024/1024).toFixed(1)}/${(total/1024/1024).toFixed(1)}MB)`)
             setProgress((prev) =>
