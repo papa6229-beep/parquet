@@ -52,60 +52,58 @@ class QueryEngine:
         return cls._instance
 
     def initialize(self, urls=None):
-        """Load parquet URLs and create sales_view. Returns (valid_urls, bad_urls)."""
+        """Load parquet URLs and create sales_view. Returns (valid_urls, bad_urls).
+        Never raises — always returns partial results."""
         if urls is None:
             urls = load_blob_urls()
         if not urls:
             self._initialized = False
             return [], []
-        # Test each URL individually — read full schema + data to catch footer corruption
+
+        # Build VIEW incrementally: add one file at a time
         valid_urls = []
         bad_urls = []
-        for url in urls:
-            try:
-                # Force full file read: DESCRIBE reads footer, SELECT reads data
-                self.conn.execute(f"DESCRIBE SELECT * FROM read_parquet('{url}')").fetchall()
-                self.conn.execute(f"SELECT * FROM read_parquet('{url}') LIMIT 5").fetchall()
-                valid_urls.append(url)
-            except Exception as e:
-                print(f"[init] Skipping bad file: {url} — {e}")
-                bad_urls.append(url)
-        if not valid_urls:
-            self._initialized = False
-            return valid_urls, bad_urls
-        # Create VIEW with retry — if multi-file read fails, fall back to one-by-one
         with self._lock:
+            for url in urls:
+                test_list = valid_urls + [url]
+                url_expr = "[" + ", ".join(f"'{u}'" for u in test_list) + "]"
+                try:
+                    self.conn.execute(f"""
+                        CREATE OR REPLACE VIEW sales_view_test AS
+                        SELECT * FROM read_parquet({url_expr},
+                            hive_partitioning=false,
+                            union_by_name=true)
+                    """)
+                    # Force actual data read to catch footer corruption
+                    self.conn.execute("SELECT * FROM sales_view_test LIMIT 1").fetchone()
+                    valid_urls.append(url)
+                except Exception as e:
+                    print(f"[init] Skipping bad file: {url} — {e}")
+                    bad_urls.append(url)
+
+            if not valid_urls:
+                self._initialized = False
+                return valid_urls, bad_urls
+
+            url_expr = "[" + ", ".join(f"'{u}'" for u in valid_urls) + "]"
             try:
-                url_list = "[" + ", ".join(f"'{u}'" for u in valid_urls) + "]"
                 self.conn.execute(f"""
                     CREATE OR REPLACE VIEW sales_view AS
-                    SELECT * FROM read_parquet({url_list},
+                    SELECT * FROM read_parquet({url_expr},
                         hive_partitioning=false,
                         union_by_name=true)
                 """)
+                self._initialized = True
             except Exception as e:
-                print(f"[init] Multi-file VIEW failed: {e}, retrying one-by-one...")
-                # Some file passed individual test but fails in combined read
-                retry_valid = []
-                for url in valid_urls:
-                    try:
-                        self.conn.execute(f"SELECT * FROM read_parquet('{url}')").fetchone()
-                        retry_valid.append(url)
-                    except Exception as e2:
-                        print(f"[init] Removing on retry: {url} — {e2}")
-                        bad_urls.append(url)
-                valid_urls = retry_valid
-                if not valid_urls:
-                    self._initialized = False
-                    return valid_urls, bad_urls
-                url_list = "[" + ", ".join(f"'{u}'" for u in valid_urls) + "]"
-                self.conn.execute(f"""
-                    CREATE OR REPLACE VIEW sales_view AS
-                    SELECT * FROM read_parquet({url_list},
-                        hive_partitioning=false,
-                        union_by_name=true)
-                """)
-            self._initialized = True
+                print(f"[init] Final VIEW creation failed: {e}")
+                self._initialized = False
+
+            # Clean up test view
+            try:
+                self.conn.execute("DROP VIEW IF EXISTS sales_view_test")
+            except Exception:
+                pass
+
         return valid_urls, bad_urls
 
     def reload(self, urls=None):
