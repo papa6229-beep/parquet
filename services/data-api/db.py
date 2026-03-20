@@ -53,6 +53,7 @@ class QueryEngine:
 
     def initialize(self, urls=None):
         """Load parquet URLs and create sales_view TABLE (materialized).
+        Two-phase: validate individually, then bulk load with union_by_name.
         Never raises — always returns partial results."""
         if urls is None:
             urls = load_blob_urls()
@@ -60,42 +61,67 @@ class QueryEngine:
             self._initialized = False
             return [], []
 
-        # Load each file individually into a materialized TABLE
+        # Phase 1: Validate each file individually
         valid_urls = []
         bad_urls = []
+        for url in urls:
+            try:
+                self.conn.execute(f"SELECT * FROM read_parquet('{url}') LIMIT 1").fetchone()
+                valid_urls.append(url)
+            except Exception as e:
+                print(f"[init] Bad file: {url.split('/')[-1]} — {e}")
+                bad_urls.append(url)
+
+        if not valid_urls:
+            self._initialized = False
+            return valid_urls, bad_urls
+
+        # Phase 2: Bulk load all valid files with union_by_name (handles schema differences)
         with self._lock:
             self.conn.execute("DROP TABLE IF EXISTS sales_view")
-            for url in urls:
-                try:
-                    if not valid_urls:
-                        # First valid file: CREATE TABLE
-                        self.conn.execute(f"""
-                            CREATE TABLE sales_view AS
-                            SELECT * FROM read_parquet('{url}',
-                                hive_partitioning=false)
-                        """)
-                    else:
-                        # Subsequent files: INSERT INTO
-                        self.conn.execute(f"""
-                            INSERT INTO sales_view
-                            SELECT * FROM read_parquet('{url}',
-                                hive_partitioning=false,
-                                union_by_name=true)
-                        """)
-                    valid_urls.append(url)
-                    print(f"[init] Loaded: {url.split('/')[-1]}")
-                except Exception as e:
-                    print(f"[init] Skipping bad file: {url.split('/')[-1]} — {e}")
-                    bad_urls.append(url)
-
-            if valid_urls:
+            url_list = "[" + ", ".join(f"'{u}'" for u in valid_urls) + "]"
+            try:
+                self.conn.execute(f"""
+                    CREATE TABLE sales_view AS
+                    SELECT * FROM read_parquet({url_list},
+                        hive_partitioning=false,
+                        union_by_name=true)
+                """)
                 self._initialized = True
                 row_count = self.conn.execute("SELECT COUNT(*) FROM sales_view").fetchone()[0]
                 print(f"[init] Done: {len(valid_urls)} files, {row_count} rows loaded")
-            else:
+            except Exception as e:
+                print(f"[init] Bulk load failed: {e}, trying binary search...")
+                # Binary search: split into halves to find bad files
                 self._initialized = False
+                self._bulk_load_with_retry(valid_urls, bad_urls)
 
         return valid_urls, bad_urls
+
+    def _bulk_load_with_retry(self, valid_urls, bad_urls):
+        """Try loading files in smaller batches to isolate problematic ones."""
+        working = []
+        for url in valid_urls[:]:
+            test = working + [url]
+            url_list = "[" + ", ".join(f"'{u}'" for u in test) + "]"
+            try:
+                self.conn.execute("DROP TABLE IF EXISTS sales_view")
+                self.conn.execute(f"""
+                    CREATE TABLE sales_view AS
+                    SELECT * FROM read_parquet({url_list},
+                        hive_partitioning=false,
+                        union_by_name=true)
+                """)
+                working.append(url)
+            except Exception as e:
+                print(f"[init] Excluding on retry: {url.split('/')[-1]} — {e}")
+                valid_urls.remove(url)
+                bad_urls.append(url)
+
+        if working:
+            self._initialized = True
+            row_count = self.conn.execute("SELECT COUNT(*) FROM sales_view").fetchone()[0]
+            print(f"[init] Retry done: {len(working)} files, {row_count} rows")
 
     def reload(self, urls=None):
         """Re-initialize view after new files uploaded. Returns (valid_urls, bad_urls)."""
